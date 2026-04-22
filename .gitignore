@@ -1,0 +1,11 @@
+# Datos crudos y limpios — demasiado grandes para GitHub
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Streamlit cache
+.streamlit/
