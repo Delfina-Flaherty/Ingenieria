@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modelo de Dominio — Sistema de Detección de Fraude</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --border: #1e2d47;
+    --accent:  #00d4ff;
+    --accent2: #ff6b35;
+    --accent3: #7c3aed;
+    --accent4: #10b981;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --card: #0f1929;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  body::before {
+    content:'';
+    position:fixed; inset:0;
+    background-image:
+      linear-gradient(rgba(0,212,255,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events:none; z-index:0;
+  }
+
+  header {
+    position:relative; z-index:10;
+    padding: 36px 50px 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  header .tag {
+    font-size:11px; letter-spacing:.18em; color:var(--accent);
+    text-transform:uppercase; margin-bottom:10px;
+  }
+  header h1 {
+    font-family:'Syne',sans-serif; font-size:28px; font-weight:800;
+  }
+  header h1 span { color:var(--accent); }
+  header p { margin-top:8px; color:var(--muted); font-size:12px; }
+
+  .legend {
+    display:flex; gap:20px; margin-top:16px; flex-wrap:wrap;
+    align-items:center;
+  }
+  .legend-item { display:flex; align-items:center; gap:7px; font-size:11px; color:var(--muted); }
+  .legend-dot { width:10px; height:10px; border-radius:2px; }
+
+  /* ── DIAGRAM WRAPPER ── */
+  .diagram-wrap {
+    overflow-x: auto;
+    overflow-y: auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  .diagram {
+    position: relative;
+    width: 1500px;
+    height: 1080px;
+  }
+
+  svg.connectors {
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    pointer-events:none; z-index:2;
+    overflow:visible;
+  }
+
+  /* ── ENTITY CARDS ── */
+  .entity {
+    position:absolute; z-index:10;
+    width: 220px;
+    border-radius:8px; overflow:hidden;
+    border:1px solid var(--border);
+    box-shadow: 0 4px 24px rgba(0,0,0,.5);
+    transition: transform .2s, box-shadow .2s;
+  }
+  .entity:hover {
+    transform:translateY(-3px);
+    box-shadow: 0 8px 40px rgba(0,212,255,.15);
+  }
+
+  .entity-header {
+    padding:9px 13px;
+    font-family:'Syne',sans-serif; font-size:12px; font-weight:700;
+    display:flex; align-items:center; gap:7px; letter-spacing:.04em;
+  }
+  .entity-header .stereo {
+    font-family:'JetBrains Mono',monospace; font-size:9px;
+    font-weight:400; opacity:.65; margin-left:auto;
+  }
+
+  .entity-body { background:var(--card); padding:6px 0; }
+
+  .attr {
+    padding:4px 13px;
+    font-size:10.5px; color:#94a3b8;
+    border-bottom:1px solid rgba(255,255,255,.03);
+    display:flex; justify-content:space-between; align-items:center;
+    line-height:1.4;
+  }
+  .attr:last-child { border-bottom:none; }
+  .attr .aname { color:#cbd5e1; }
+  .attr .atype { color:var(--muted); font-size:9.5px; margin-left:6px; white-space:nowrap; }
+  .pk { color:#fbbf24; font-size:9px; margin-right:3px; }
+  .fk { color:#60a5fa; font-size:9px; margin-right:3px; }
+
+  /* colour themes */
+  .c-blue   .entity-header { background:#0e2a3f; border-bottom:2px solid var(--accent);  color:var(--accent); }
+  .c-orange .entity-header { background:#2a1a0e; border-bottom:2px solid var(--accent2); color:var(--accent2); }
+  .c-purple .entity-header { background:#1a0e2a; border-bottom:2px solid var(--accent3); color:var(--accent3); }
+  .c-green  .entity-header { background:#0e2a1a; border-bottom:2px solid var(--accent4); color:var(--accent4); }
+  .c-gray   .entity-header { background:#1a1e2a; border-bottom:2px solid #475569;        color:#94a3b8; }
+
+  /* ── LABELS ── */
+  .lbl {
+    position:absolute; z-index:20;
+    font-size:10px; font-family:'JetBrains Mono',monospace;
+    color:var(--accent); background:var(--bg);
+    padding:1px 4px; border-radius:3px;
+    pointer-events:none;
+  }
+  .rel-badge {
+    position:absolute; z-index:20;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:4px; padding:2px 7px;
+    font-size:9.5px; color:var(--muted);
+    font-family:'JetBrains Mono',monospace; white-space:nowrap;
+    cursor:default;
+    transition: color .15s, border-color .15s;
+  }
+  .rel-badge:hover { color:var(--text); border-color:var(--accent); }
+
+  /* ── DESCRIPTIONS ── */
+  .descriptions {
+    position:relative; z-index:10;
+    padding:36px 50px;
+    border-top:1px solid var(--border);
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(290px,1fr));
+    gap:18px;
+  }
+  .desc-card {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:8px; padding:16px 18px;
+  }
+  .desc-card h3 {
+    font-family:'Syne',sans-serif; font-size:12px; font-weight:700;
+    margin-bottom:9px; display:flex; align-items:center; gap:7px;
+  }
+  .desc-card ul { list-style:none; margin-top:6px; }
+  .desc-card ul li {
+    font-size:10.5px; color:var(--muted); line-height:1.8;
+    padding-left:14px; position:relative;
+  }
+  .desc-card ul li::before {
+    content:'→'; position:absolute; left:0;
+    color:var(--accent); font-size:10px;
+  }
+
+  footer {
+    position:relative; z-index:10;
+    padding:18px 50px;
+    border-top:1px solid var(--border);
+    font-size:10.5px; color:var(--muted);
+    display:flex; justify-content:space-between;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="tag">// Ingeniería de Software · Ciencia de Datos en Organizaciones</div>
+  <h1>Modelo de <span>Dominio</span> — Sistema de Detección de Fraude</h1>
+  <p>Diagrama de clases conceptual · UML · v2.0</p>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Entidad principal</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent2)"></div>Transacción / Alerta</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent3)"></div>Análisis / ML</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent4)"></div>Referencia</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#475569"></div>Derivada</div>
+    <div class="legend-item" style="gap:12px; margin-left:8px;">
+      <span style="color:#fbbf24;font-size:11px">🔑 PK</span>
+      <span style="color:#60a5fa;font-size:11px">🔗 FK</span>
+    </div>
+  </div>
+</header>
+
+<div class="diagram-wrap">
+<div class="diagram" id="diagram">
+
+<!--
+  LAYOUT (col × row, each cell ~300px × 260px)
+  Col 0 (x=40):   Usuario, PerfilRiesgo
+  Col 1 (x=340):  Tarjeta
+  Col 2 (x=640):  Transaccion
+  Col 3 (x=960):  CodigoMCC, AlertaFraude, PrediccionFraude
+  Col 4 (x=1240): ModeloML
+-->
+
+<!-- ════ SVG CONNECTORS ════ -->
+<svg class="connectors" id="svg">
+  <defs>
+    <marker id="arr"  markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3z" fill="#334155"/>
+    </marker>
+    <marker id="arr-b" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3z" fill="#1e3a5f"/>
+    </marker>
+    <marker id="arr-p" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3z" fill="#3b1a6e"/>
+    </marker>
+  </defs>
+
+  <!--
+    Entity anchor points (center of right/left/top/bottom edge):
+    Usuario     (40,60,220,360)   right=(260,240), bottom=(150,420)
+    Tarjeta     (340,60,220,340)  left=(340,230),  right=(560,230), bottom=(450,400)
+    Transaccion (640,300,220,400) left=(640,500),  right=(860,500), top=(750,300), bottom=(750,700)
+    CodigoMCC   (960,300,220,130) left=(960,365)
+    AlertaFraude(960,640,220,210) left=(960,745),  top=(1070,640)
+    PrediccionFr(960,880,220,190) left=(960,975),  top=(1070,880)
+    ModeloML    (1240,560,220,260)left=(1240,690),  top=(1350,560)
+    PerfilRiesgo(40,500,220,200)  top=(150,500)
+  -->
+
+  <!-- Usuario → Tarjeta  (1 : N) -->
+  <!-- right of Usuario (260,240) → left of Tarjeta (340,230) -->
+  <polyline points="260,240 340,230"
+    stroke="#1e3a5f" stroke-width="2" fill="none" marker-end="url(#arr-b)"/>
+
+  <!-- Usuario → Transaccion  (1 : N) via bend -->
+  <!-- right of Usuario (260,240) → left of Transaccion (640,500) -->
+  <polyline points="260,240 300,240 300,500 640,500"
+    stroke="#1e3a5f" stroke-width="2" fill="none" marker-end="url(#arr-b)"/>
+
+  <!-- Tarjeta → Transaccion  (1 : N) -->
+  <!-- bottom of Tarjeta (450,400) → top of Transaccion (750,300) via bend -->
+  <polyline points="450,400 450,440 750,440 750,700"
+    stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+
+  <!-- Transaccion → CodigoMCC  (N : 1) -->
+  <!-- right of Transaccion (860,500) → left of CodigoMCC (960,365) -->
+  <polyline points="860,500 910,500 910,365 960,365"
+    stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+
+  <!-- Transaccion → AlertaFraude  (1 : 0..1) -->
+  <!-- right of Transaccion (860,500) → left of AlertaFraude (960,745) -->
+  <polyline points="860,500 910,500 910,745 960,745"
+    stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+
+  <!-- Transaccion → PrediccionFraude  (1 : 1) dashed -->
+  <!-- right of Transaccion (860,500) → left of PrediccionFr (960,975) -->
+  <polyline points="860,500 920,500 920,975 960,975"
+    stroke="#3b1a6e" stroke-width="1.5" fill="none"
+    stroke-dasharray="6 3" marker-end="url(#arr-p)"/>
+
+  <!-- AlertaFraude → ModeloML  (N : 1) -->
+  <!-- right of AlertaFraude (1180,745) → left of ModeloML (1240,690) -->
+  <polyline points="1180,745 1240,690"
+    stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+
+  <!-- PrediccionFraude → ModeloML  (N : 1) -->
+  <!-- right of PrediccionFraude (1180,975) → bottom-right bend → left of ModeloML (1240,690) -->
+  <polyline points="1180,975 1210,975 1210,820 1240,690"
+    stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+
+  <!-- Usuario → PerfilRiesgo  (1 : 1) dashed -->
+  <!-- bottom of Usuario (150,420) → top of PerfilRiesgo (150,500) -->
+  <polyline points="150,420 150,500"
+    stroke="#334155" stroke-width="1.5" fill="none"
+    stroke-dasharray="6 3" marker-end="url(#arr)"/>
+</svg>
+
+
+<!-- ════ ENTITIES ════ -->
+
+<!-- 1 · Usuario  (col 0, row 0) -->
+<div class="entity c-blue" style="left:40px; top:60px;">
+  <div class="entity-header">👤 Usuario <span class="stereo">«entity»</span></div>
+  <div class="entity-body">
+    <div class="attr"><span><span class="pk">🔑</span><span class="aname">id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="aname">current_age</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="aname">birth_year</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="aname">gender</span></span><span class="atype">ENUM</span></div>
+    <div class="attr"><span><span class="aname">address</span></span><span class="atype">STRING</span></div>
+    <div class="attr"><span><span class="aname">latitude / longitude</span></span><span class="atype">FLOAT</span></div>
+    <div class="attr"><span><span class="aname">yearly_income</span></span><span class="atype">DECIMAL</span></div>
+    <div class="attr"><span><span class="aname">total_debt</span></span><span class="atype">DECIMAL</span></div>
+    <div class="attr"><span><span class="aname">credit_score</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="aname">num_credit_cards</span></span><span class="atype">INT</span></div>
+  </div>
+</div>
+
+<!-- 2 · Tarjeta  (col 1, row 0) -->
+<div class="entity c-blue" style="left:340px; top:60px;">
+  <div class="entity-header">💳 Tarjeta <span class="stereo">«entity»</span></div>
+  <div class="entity-body">
+    <div class="attr"><span><span class="pk">🔑</span><span class="aname">id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="fk">🔗</span><span class="aname">client_id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="aname">card_brand</span></span><span class="atype">ENUM</span></div>
+    <div class="attr"><span><span class="aname">card_type</span></span><span class="atype">ENUM</span></div>
+    <div class="attr"><span><span class="aname">card_number</span></span><span class="atype">STRING</span></div>
+    <div class="attr"><span><span class="aname">expires</span></span><span class="atype">DATE</span></div>
+    <div class="attr"><span><span class="aname">has_chip</span></span><span class="atype">BOOL</span></div>
+    <div class="attr"><span><span class="aname">credit_limit</span></span><span class="atype">DECIMAL</span></div>
+    <div class="attr"><span><span class="aname">acct_open_date</span></span><span class="atype">DATE</span></div>
+    <div class="attr"><span><span class="aname">card_on_dark_web</span></span><span class="atype">BOOL</span></div>
+  </div>
+</div>
+
+<!-- 3 · Transaccion  (col 2, centre) -->
+<div class="entity c-orange" style="left:640px; top:300px;">
+  <div class="entity-header">💸 Transaccion <span class="stereo">«entity»</span></div>
+  <div class="entity-body">
+    <div class="attr"><span><span class="pk">🔑</span><span class="aname">id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="fk">🔗</span><span class="aname">card_id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="fk">🔗</span><span class="aname">user_id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="fk">🔗</span><span class="aname">mcc_code</span></span><span class="atype">STRING</span></div>
+    <div class="attr"><span><span class="aname">amount</span></span><span class="atype">DECIMAL</span></div>
+    <div class="attr"><span><span class="aname">datetime</span></span><span class="atype">DATETIME</span></div>
+    <div class="attr"><span><span class="aname">merchant_name</span></span><span class="atype">STRING</span></div>
+    <div class="attr"><span><span class="aname">merchant_city</span></span><span class="atype">STRING</span></div>
+    <div class="attr"><span><span class="aname">merchant_state</span></span><span class="atype">STRING</span></div>
+    <div class="attr"><span><span class="aname">use_chip</span></span><span class="atype">ENUM</span></div>
+    <div class="attr"><span><span class="aname">errors</span></span><span class="atype">STRING?</span></div>
+  </div>
+</div>
+
+<!-- 4 · CodigoMCC  (col 3, row 0) -->
+<div class="entity c-green" style="left:960px; top:300px;">
+  <div class="entity-header">🏪 CodigoMCC <span class="stereo">«reference»</span></div>
+  <div class="entity-body">
+    <div class="attr"><span><span class="pk">🔑</span><span class="aname">code</span></span><span class="atype">STRING</span></div>
+    <div class="attr"><span><span class="aname">description</span></span><span class="atype">STRING</span></div>
+    <div class="attr"><span><span class="aname">category_group</span></span><span class="atype">STRING</span></div>
+  </div>
+</div>
+
+<!-- 5 · AlertaFraude  (col 3, row 1) -->
+<div class="entity c-orange" style="left:960px; top:640px;">
+  <div class="entity-header">🚨 AlertaFraude <span class="stereo">«entity»</span></div>
+  <div class="entity-body">
+    <div class="attr"><span><span class="pk">🔑</span><span class="aname">id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="fk">🔗</span><span class="aname">transaction_id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="fk">🔗</span><span class="aname">model_id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="aname">severity</span></span><span class="atype">ENUM</span></div>
+    <div class="attr"><span><span class="aname">status</span></span><span class="atype">ENUM</span></div>
+    <div class="attr"><span><span class="aname">created_at</span></span><span class="atype">DATETIME</span></div>
+    <div class="attr"><span><span class="aname">resolved_at</span></span><span class="atype">DATETIME?</span></div>
+  </div>
+</div>
+
+<!-- 6 · PrediccionFraude  (col 3, row 2) -->
+<div class="entity c-purple" style="left:960px; top:880px;">
+  <div class="entity-header">🧠 PrediccionFraude <span class="stereo">«analysis»</span></div>
+  <div class="entity-body">
+    <div class="attr"><span><span class="pk">🔑</span><span class="aname">id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="fk">🔗</span><span class="aname">transaction_id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="fk">🔗</span><span class="aname">model_id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="aname">fraud_score</span></span><span class="atype">FLOAT</span></div>
+    <div class="attr"><span><span class="aname">is_fraud</span></span><span class="atype">BOOL</span></div>
+    <div class="attr"><span><span class="aname">predicted_at</span></span><span class="atype">DATETIME</span></div>
+  </div>
+</div>
+
+<!-- 7 · ModeloML  (col 4, row 1) -->
+<div class="entity c-purple" style="left:1240px; top:560px;">
+  <div class="entity-header">⚙️ ModeloML <span class="stereo">«analysis»</span></div>
+  <div class="entity-body">
+    <div class="attr"><span><span class="pk">🔑</span><span class="aname">id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="aname">name</span></span><span class="atype">STRING</span></div>
+    <div class="attr"><span><span class="aname">version</span></span><span class="atype">STRING</span></div>
+    <div class="attr"><span><span class="aname">algorithm</span></span><span class="atype">STRING</span></div>
+    <div class="attr"><span><span class="aname">trained_at</span></span><span class="atype">DATETIME</span></div>
+    <div class="attr"><span><span class="aname">precision</span></span><span class="atype">FLOAT</span></div>
+    <div class="attr"><span><span class="aname">recall</span></span><span class="atype">FLOAT</span></div>
+    <div class="attr"><span><span class="aname">auc_roc</span></span><span class="atype">FLOAT</span></div>
+    <div class="attr"><span><span class="aname">is_active</span></span><span class="atype">BOOL</span></div>
+  </div>
+</div>
+
+<!-- 8 · PerfilRiesgo  (col 0, row 1) -->
+<div class="entity c-gray" style="left:40px; top:500px;">
+  <div class="entity-header">📊 PerfilRiesgo <span class="stereo">«derived»</span></div>
+  <div class="entity-body">
+    <div class="attr"><span><span class="pk">🔑</span><span class="aname">id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="fk">🔗</span><span class="aname">user_id</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="aname">avg_txn_amount</span></span><span class="atype">DECIMAL</span></div>
+    <div class="attr"><span><span class="aname">txn_frequency</span></span><span class="atype">FLOAT</span></div>
+    <div class="attr"><span><span class="aname">fraud_count</span></span><span class="atype">INT</span></div>
+    <div class="attr"><span><span class="aname">risk_score</span></span><span class="atype">FLOAT</span></div>
+    <div class="attr"><span><span class="aname">last_updated</span></span><span class="atype">DATETIME</span></div>
+  </div>
+</div>
+
+
+<!-- ════ CARDINALITY LABELS ════ -->
+<!-- Usuario → Tarjeta -->
+<div class="lbl" style="left:263px; top:225px">1</div>
+<div class="lbl" style="left:323px; top:218px">N</div>
+
+<!-- Usuario → Transaccion -->
+<div class="lbl" style="left:263px; top:228px"></div><!-- shared line -->
+<div class="lbl" style="left:288px; top:485px">1</div>
+<div class="lbl" style="left:624px; top:485px">N</div>
+
+<!-- Tarjeta → Transaccion -->
+<div class="lbl" style="left:455px; top:403px">1</div>
+<div class="lbl" style="left:738px; top:703px">N</div>
+
+<!-- Transaccion → CodigoMCC -->
+<div class="lbl" style="left:862px; top:483px">N</div>
+<div class="lbl" style="left:944px; top:350px">1</div>
+
+<!-- Transaccion → AlertaFraude -->
+<div class="lbl" style="left:862px; top:503px"></div>
+<div class="lbl" style="left:862px; top:490px">1</div>
+<div class="lbl" style="left:944px; top:728px">0..1</div>
+
+<!-- Transaccion → PrediccionFraude -->
+<div class="lbl" style="left:862px; top:510px"></div>
+<div class="lbl" style="left:922px; top:490px">1</div>
+<div class="lbl" style="left:944px; top:958px">1</div>
+
+<!-- AlertaFraude → ModeloML -->
+<div class="lbl" style="left:1183px; top:728px">N</div>
+<div class="lbl" style="left:1224px; top:673px">1</div>
+
+<!-- PrediccionFraude → ModeloML -->
+<div class="lbl" style="left:1183px; top:958px">N</div>
+<div class="lbl" style="left:1215px; top:700px">1</div>
+
+<!-- Usuario → PerfilRiesgo -->
+<div class="lbl" style="left:155px; top:423px">1</div>
+<div class="lbl" style="left:155px; top:484px">1</div>
+
+
+<!-- ════ RELATION BADGES ════ -->
+<div class="rel-badge" style="left:270px; top:220px">posee ▶</div>
+<div class="rel-badge" style="left:285px; top:455px">realiza ▶</div>
+<div class="rel-badge" style="left:488px; top:418px">usa ▶</div>
+<div class="rel-badge" style="left:862px; top:415px">clasifica ▶</div>
+<div class="rel-badge" style="left:862px; top:603px">genera ▶</div>
+<div class="rel-badge" style="left:862px; top:770px">evalúa ▶</div>
+<div class="rel-badge" style="left:1183px; top:700px">usa ▶</div>
+<div class="rel-badge" style="left:1183px; top:860px">usa ▶</div>
+<div class="rel-badge" style="left:100px;  top:453px">tiene ▶</div>
+
+</div><!-- end .diagram -->
+</div><!-- end .diagram-wrap -->
+
+
+<!-- ════ DESCRIPTIONS ════ -->
+<div class="descriptions">
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent)">👤 Usuario</h3>
+    <ul>
+      <li>Titular de las tarjetas. Datos demográficos, geográficos y financieros.</li>
+      <li>credit_score como indicador base de riesgo</li>
+      <li>Coordenadas para detección de anomalías geográficas</li>
+      <li>Ratio yearly_income / total_debt como feature de solvencia</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent)">💳 Tarjeta</h3>
+    <ul>
+      <li>Instrumento financiero asociado a un Usuario</li>
+      <li>card_on_dark_web → feature crítica para el modelo</li>
+      <li>has_chip correlaciona con seguridad de la transacción</li>
+      <li>card_type prepaid asociado a mayor riesgo estadístico</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent2)">💸 Transaccion</h3>
+    <ul>
+      <li>Evento central del sistema, evaluado por el modelo ML</li>
+      <li>errors (PIN incorrecto, etc.) como señal de fraude</li>
+      <li>use_chip indica si se usó chip o banda magnética</li>
+      <li>merchant_city permite detectar transacciones geográficamente imposibles</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent4)">🏪 CodigoMCC</h3>
+    <ul>
+      <li>Catálogo de ~90 categorías de comercios (Merchant Category Code)</li>
+      <li>Permite agrupar y detectar patrones por sector</li>
+      <li>Alto riesgo: casinos, money transfer, prepaid cards</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent2)">🚨 AlertaFraude</h3>
+    <ul>
+      <li>Notificación accionable cuando el score supera un umbral</li>
+      <li>severity: LOW / MEDIUM / HIGH / CRITICAL</li>
+      <li>status: OPEN → REVIEWING → CONFIRMED / DISMISSED</li>
+      <li>Relación 0..1 con Transaccion (no toda genera alerta)</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent3)">🧠 PrediccionFraude</h3>
+    <ul>
+      <li>Resultado del modelo ML sobre cada transacción (1:1)</li>
+      <li>fraud_score en [0,1] para umbrales configurables</li>
+      <li>Trazabilidad: qué versión del modelo generó la predicción</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent3)">⚙️ ModeloML</h3>
+    <ul>
+      <li>Registro de versiones del modelo de detección</li>
+      <li>Almacena métricas: precision, recall, AUC-ROC</li>
+      <li>is_active identifica el modelo en producción activo</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:#94a3b8">📊 PerfilRiesgo</h3>
+    <ul>
+      <li>Entidad derivada que agrega comportamiento histórico del usuario</li>
+      <li>Se recalcula periódicamente (batch o event-driven)</li>
+      <li>risk_score compuesto usado como feature del modelo</li>
+    </ul>
+  </div>
+
+</div>
+
+<footer>
+  <span>Sistema de Detección de Fraude Financiero · Modelo de Dominio UML · v2.0 · 2026</span>
+  <span>8 entidades · 9 relaciones · basado en: transactions_data, cards_data, users_data, mcc_codes, train_fraud_labels</span>
+</footer>
+
+</body>
+</html>

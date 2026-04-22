@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modelo de Dominio — Sistema de Detección de Fraude</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --border: #1e2d47;
+    --accent: #00d4ff;
+    --accent2: #ff6b35;
+    --accent3: #7c3aed;
+    --accent4: #10b981;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --card: #0f1929;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header {
+    position: relative;
+    z-index: 10;
+    padding: 48px 60px 32px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  header .tag {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 32px;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+
+  header h1 span { color: var(--accent); }
+
+  header p {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .legend {
+    display: flex;
+    gap: 24px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+  }
+
+  /* Main canvas */
+  .canvas {
+    position: relative;
+    z-index: 1;
+    padding: 60px;
+    min-height: 900px;
+  }
+
+  /* SVG connector layer */
+  .svg-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* Entity cards */
+  .entity {
+    position: absolute;
+    z-index: 10;
+    width: 230px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .entity:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 40px rgba(0,212,255,0.15);
+  }
+
+  .entity-header {
+    padding: 10px 14px;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: 0.05em;
+  }
+
+  .entity-header .icon { font-size: 14px; }
+
+  .entity-header .stereotype {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 400;
+    opacity: 0.7;
+    margin-left: auto;
+  }
+
+  .entity-body {
+    background: var(--card);
+    padding: 8px 0;
+  }
+
+  .attr {
+    padding: 5px 14px;
+    font-size: 11px;
+    color: #94a3b8;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    line-height: 1.4;
+  }
+
+  .attr:last-child { border-bottom: none; }
+
+  .attr .attr-name { color: #cbd5e1; }
+
+  .attr .attr-type {
+    color: var(--muted);
+    font-size: 10px;
+    margin-left: 8px;
+    white-space: nowrap;
+  }
+
+  .attr .pk {
+    color: #fbbf24;
+    font-size: 9px;
+    margin-right: 4px;
+  }
+
+  .attr .fk {
+    color: #60a5fa;
+    font-size: 9px;
+    margin-right: 4px;
+  }
+
+  /* Color variants */
+  .entity-blue .entity-header { background: #0e2a3f; border-bottom: 2px solid var(--accent); color: var(--accent); }
+  .entity-orange .entity-header { background: #2a1a0e; border-bottom: 2px solid var(--accent2); color: var(--accent2); }
+  .entity-purple .entity-header { background: #1a0e2a; border-bottom: 2px solid var(--accent3); color: var(--accent3); }
+  .entity-green .entity-header { background: #0e2a1a; border-bottom: 2px solid var(--accent4); color: var(--accent4); }
+  .entity-gray .entity-header { background: #1a1e2a; border-bottom: 2px solid #475569; color: #94a3b8; }
+
+  /* SVG lines */
+  .rel-line { stroke-dasharray: none; }
+  .rel-assoc { stroke: #334155; stroke-width: 1.5; }
+  .rel-strong { stroke: #1e3a5f; stroke-width: 2; }
+
+  /* Cardinality labels */
+  .card-label {
+    position: absolute;
+    z-index: 20;
+    font-size: 11px;
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  /* Relationship label badges */
+  .rel-badge {
+    position: absolute;
+    z-index: 20;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 10px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+    cursor: default;
+  }
+
+  .rel-badge:hover { color: var(--text); border-color: var(--accent); }
+
+  /* Bottom section: descriptions */
+  .descriptions {
+    position: relative;
+    z-index: 10;
+    padding: 40px 60px;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+  }
+
+  .desc-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+  }
+
+  .desc-card h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .desc-card p {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .desc-card ul {
+    list-style: none;
+    margin-top: 8px;
+  }
+
+  .desc-card ul li {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.8;
+    padding-left: 14px;
+    position: relative;
+  }
+
+  .desc-card ul li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-size: 10px;
+  }
+
+  footer {
+    position: relative;
+    z-index: 10;
+    padding: 20px 60px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="tag">// Ingeniería de Software — Ciencia de Datos en Organizaciones</div>
+  <h1>Modelo de <span>Dominio</span><br>Sistema de Detección de Fraude</h1>
+  <p>Diagrama de clases conceptual · UML · v1.0</p>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> Entidad principal</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent2)"></div> Entidad de transacción</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent3)"></div> Entidad de análisis</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent4)"></div> Entidad de referencia</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#475569"></div> Entidad de soporte</div>
+    <div class="legend-item" style="gap:12px">
+      <span style="color:#fbbf24;font-size:11px">🔑 PK</span>
+      <span style="color:#60a5fa;font-size:11px">🔗 FK</span>
+    </div>
+  </div>
+</header>
+
+<div class="canvas" id="canvas" style="height: 980px;">
+
+  <!-- SVG connections layer -->
+  <svg class="svg-layer" id="svg-layer">
+    <defs>
+      <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#334155"/>
+      </marker>
+      <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="var(--accent)"/>
+      </marker>
+      <marker id="arrow-diam" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+        <polygon points="5,0 10,5 5,10 0,5" fill="#1e3a5f" stroke="#334155" stroke-width="1"/>
+      </marker>
+    </defs>
+
+    <!-- Usuario → Tarjeta (1:N) -->
+    <line x1="215" y1="230" x2="395" y2="180" stroke="#1e3a5f" stroke-width="2" marker-end="url(#arrow)"/>
+    <!-- Usuario → Transaccion (1:N) -->
+    <line x1="215" y1="250" x2="395" y2="430" stroke="#1e3a5f" stroke-width="2" marker-end="url(#arrow)"/>
+    <!-- Tarjeta → Transaccion (1:N) -->
+    <line x1="625" y1="270" x2="625" y2="380" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <!-- Transaccion → AlertaFraude (1:0..1) -->
+    <line x1="625" y1="620" x2="625" y2="700" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <!-- Transaccion → CodigoMCC (N:1) -->
+    <line x1="855" y1="490" x2="900" y2="490" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <!-- AlertaFraude → ModeloML (N:1) -->
+    <line x1="740" y1="770" x2="900" y2="700" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <!-- Transaccion → PrediccionFraude (1:1) -->
+    <line x1="395" y1="520" x2="395" y2="680" stroke="#1a0e2a" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrow)"/>
+    <!-- Usuario → PerfilRiesgo (1:1) -->
+    <line x1="100" y1="320" x2="100" y2="570" stroke="#334155" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arrow)"/>
+  </svg>
+
+  <!-- ====== ENTIDADES ====== -->
+
+  <!-- 1. Usuario -->
+  <div class="entity entity-blue" style="left:60px; top:80px;" id="e-usuario">
+    <div class="entity-header">
+      <span class="icon">👤</span> Usuario
+      <span class="stereotype">«entity»</span>
+    </div>
+    <div class="entity-body">
+      <div class="attr"><span><span class="pk">🔑</span><span class="attr-name">id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="attr-name">current_age</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="attr-name">birth_year</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="attr-name">gender</span></span><span class="attr-type">ENUM</span></div>
+      <div class="attr"><span><span class="attr-name">address</span></span><span class="attr-type">STRING</span></div>
+      <div class="attr"><span><span class="attr-name">latitude / longitude</span></span><span class="attr-type">FLOAT</span></div>
+      <div class="attr"><span><span class="attr-name">yearly_income</span></span><span class="attr-type">DECIMAL</span></div>
+      <div class="attr"><span><span class="attr-name">total_debt</span></span><span class="attr-type">DECIMAL</span></div>
+      <div class="attr"><span><span class="attr-name">credit_score</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="attr-name">num_credit_cards</span></span><span class="attr-type">INT</span></div>
+    </div>
+  </div>
+
+  <!-- 2. Tarjeta -->
+  <div class="entity entity-blue" style="left:390px; top:60px;" id="e-tarjeta">
+    <div class="entity-header">
+      <span class="icon">💳</span> Tarjeta
+      <span class="stereotype">«entity»</span>
+    </div>
+    <div class="entity-body">
+      <div class="attr"><span><span class="pk">🔑</span><span class="attr-name">id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="fk">🔗</span><span class="attr-name">client_id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="attr-name">card_brand</span></span><span class="attr-type">ENUM</span></div>
+      <div class="attr"><span><span class="attr-name">card_type</span></span><span class="attr-type">ENUM</span></div>
+      <div class="attr"><span><span class="attr-name">card_number</span></span><span class="attr-type">STRING</span></div>
+      <div class="attr"><span><span class="attr-name">expires</span></span><span class="attr-type">DATE</span></div>
+      <div class="attr"><span><span class="attr-name">has_chip</span></span><span class="attr-type">BOOL</span></div>
+      <div class="attr"><span><span class="attr-name">credit_limit</span></span><span class="attr-type">DECIMAL</span></div>
+      <div class="attr"><span><span class="attr-name">acct_open_date</span></span><span class="attr-type">DATE</span></div>
+      <div class="attr"><span><span class="attr-name">card_on_dark_web</span></span><span class="attr-type">BOOL</span></div>
+    </div>
+  </div>
+
+  <!-- 3. Transacción -->
+  <div class="entity entity-orange" style="left:390px; top:370px;" id="e-transaccion">
+    <div class="entity-header">
+      <span class="icon">💸</span> Transaccion
+      <span class="stereotype">«entity»</span>
+    </div>
+    <div class="entity-body">
+      <div class="attr"><span><span class="pk">🔑</span><span class="attr-name">id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="fk">🔗</span><span class="attr-name">card_id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="fk">🔗</span><span class="attr-name">user_id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="fk">🔗</span><span class="attr-name">mcc_code</span></span><span class="attr-type">STRING</span></div>
+      <div class="attr"><span><span class="attr-name">amount</span></span><span class="attr-type">DECIMAL</span></div>
+      <div class="attr"><span><span class="attr-name">datetime</span></span><span class="attr-type">DATETIME</span></div>
+      <div class="attr"><span><span class="attr-name">merchant_name</span></span><span class="attr-type">STRING</span></div>
+      <div class="attr"><span><span class="attr-name">merchant_city</span></span><span class="attr-type">STRING</span></div>
+      <div class="attr"><span><span class="attr-name">merchant_state</span></span><span class="attr-type">STRING</span></div>
+      <div class="attr"><span><span class="attr-name">use_chip</span></span><span class="attr-type">ENUM</span></div>
+      <div class="attr"><span><span class="attr-name">errors</span></span><span class="attr-type">STRING?</span></div>
+    </div>
+  </div>
+
+  <!-- 4. CodigoMCC -->
+  <div class="entity entity-green" style="left:900px; top:400px;" id="e-mcc">
+    <div class="entity-header">
+      <span class="icon">🏪</span> CodigoMCC
+      <span class="stereotype">«reference»</span>
+    </div>
+    <div class="entity-body">
+      <div class="attr"><span><span class="pk">🔑</span><span class="attr-name">code</span></span><span class="attr-type">STRING</span></div>
+      <div class="attr"><span><span class="attr-name">description</span></span><span class="attr-type">STRING</span></div>
+      <div class="attr"><span><span class="attr-name">category_group</span></span><span class="attr-type">STRING</span></div>
+    </div>
+  </div>
+
+  <!-- 5. PrediccionFraude -->
+  <div class="entity entity-purple" style="left:160px; top:680px;" id="e-prediccion">
+    <div class="entity-header">
+      <span class="icon">🧠</span> PrediccionFraude
+      <span class="stereotype">«analysis»</span>
+    </div>
+    <div class="entity-body">
+      <div class="attr"><span><span class="pk">🔑</span><span class="attr-name">id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="fk">🔗</span><span class="attr-name">transaction_id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="fk">🔗</span><span class="attr-name">model_id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="attr-name">fraud_score</span></span><span class="attr-type">FLOAT</span></div>
+      <div class="attr"><span><span class="attr-name">is_fraud</span></span><span class="attr-type">BOOL</span></div>
+      <div class="attr"><span><span class="attr-name">predicted_at</span></span><span class="attr-type">DATETIME</span></div>
+    </div>
+  </div>
+
+  <!-- 6. AlertaFraude -->
+  <div class="entity entity-orange" style="left:560px; top:700px;" id="e-alerta">
+    <div class="entity-header">
+      <span class="icon">🚨</span> AlertaFraude
+      <span class="stereotype">«entity»</span>
+    </div>
+    <div class="entity-body">
+      <div class="attr"><span><span class="pk">🔑</span><span class="attr-name">id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="fk">🔗</span><span class="attr-name">transaction_id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="fk">🔗</span><span class="attr-name">model_id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="attr-name">severity</span></span><span class="attr-type">ENUM</span></div>
+      <div class="attr"><span><span class="attr-name">status</span></span><span class="attr-type">ENUM</span></div>
+      <div class="attr"><span><span class="attr-name">created_at</span></span><span class="attr-type">DATETIME</span></div>
+      <div class="attr"><span><span class="attr-name">resolved_at</span></span><span class="attr-type">DATETIME?</span></div>
+    </div>
+  </div>
+
+  <!-- 7. ModeloML -->
+  <div class="entity entity-purple" style="left:900px; top:660px;" id="e-modelo">
+    <div class="entity-header">
+      <span class="icon">⚙️</span> ModeloML
+      <span class="stereotype">«analysis»</span>
+    </div>
+    <div class="entity-body">
+      <div class="attr"><span><span class="pk">🔑</span><span class="attr-name">id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="attr-name">name</span></span><span class="attr-type">STRING</span></div>
+      <div class="attr"><span><span class="attr-name">version</span></span><span class="attr-type">STRING</span></div>
+      <div class="attr"><span><span class="attr-name">algorithm</span></span><span class="attr-type">STRING</span></div>
+      <div class="attr"><span><span class="attr-name">trained_at</span></span><span class="attr-type">DATETIME</span></div>
+      <div class="attr"><span><span class="attr-name">precision</span></span><span class="attr-type">FLOAT</span></div>
+      <div class="attr"><span><span class="attr-name">recall</span></span><span class="attr-type">FLOAT</span></div>
+      <div class="attr"><span><span class="attr-name">auc_roc</span></span><span class="attr-type">FLOAT</span></div>
+      <div class="attr"><span><span class="attr-name">is_active</span></span><span class="attr-type">BOOL</span></div>
+    </div>
+  </div>
+
+  <!-- 8. PerfilRiesgo -->
+  <div class="entity entity-gray" style="left:60px; top:570px;" id="e-perfil">
+    <div class="entity-header">
+      <span class="icon">📊</span> PerfilRiesgo
+      <span class="stereotype">«derived»</span>
+    </div>
+    <div class="entity-body">
+      <div class="attr"><span><span class="pk">🔑</span><span class="attr-name">id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="fk">🔗</span><span class="attr-name">user_id</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="attr-name">avg_txn_amount</span></span><span class="attr-type">DECIMAL</span></div>
+      <div class="attr"><span><span class="attr-name">txn_frequency</span></span><span class="attr-type">FLOAT</span></div>
+      <div class="attr"><span><span class="attr-name">fraud_count</span></span><span class="attr-type">INT</span></div>
+      <div class="attr"><span><span class="attr-name">risk_score</span></span><span class="attr-type">FLOAT</span></div>
+      <div class="attr"><span><span class="attr-name">last_updated</span></span><span class="attr-type">DATETIME</span></div>
+    </div>
+  </div>
+
+  <!-- Cardinality labels -->
+  <div class="card-label" style="left:270px; top:185px">1</div>
+  <div class="card-label" style="left:380px; top:155px">N</div>
+  <div class="card-label" style="left:270px; top:340px">1</div>
+  <div class="card-label" style="left:380px; top:410px">N</div>
+  <div class="card-label" style="left:640px; top:310px">1</div>
+  <div class="card-label" style="left:640px; top:365px">N</div>
+  <div class="card-label" style="left:640px; top:642px">1</div>
+  <div class="card-label" style="left:640px; top:688px">0..1</div>
+  <div class="card-label" style="left:858px; top:473px">N</div>
+  <div class="card-label" style="left:893px; top:473px">1</div>
+  <div class="card-label" style="left:408px; top:645px">1</div>
+  <div class="card-label" style="left:408px; top:670px">1</div>
+  <div class="card-label" style="left:108px; top:415px">1</div>
+  <div class="card-label" style="left:108px; top:560px">1</div>
+
+  <!-- Relationship labels -->
+  <div class="rel-badge" style="left:274px; top:148px">posee ▶</div>
+  <div class="rel-badge" style="left:238px; top:320px">realiza ▶</div>
+  <div class="rel-badge" style="left:634px; top:318px">usa ▶</div>
+  <div class="rel-badge" style="left:634px; top:645px">genera ▶</div>
+  <div class="rel-badge" style="left:858px; top:438px">clasifica ▶</div>
+  <div class="rel-badge" style="left:300px; top:630px">evalúa ▶</div>
+  <div class="rel-badge" style="left:108px; top:482px">tiene ▶</div>
+  <div class="rel-badge" style="left:776px; top:700px">usa ▶</div>
+
+</div><!-- end canvas -->
+
+<!-- Descriptions -->
+<div class="descriptions">
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent)">👤 Usuario</h3>
+    <p>Titular de las tarjetas. Contiene datos demográficos, geográficos y financieros que permiten construir un perfil de comportamiento.</p>
+    <ul>
+      <li>credit_score como indicador de riesgo base</li>
+      <li>Coordenadas para detección de anomalías geográficas</li>
+      <li>yearly_income / total_debt como ratio de solvencia</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent)">💳 Tarjeta</h3>
+    <p>Instrumento financiero asociado a un usuario. El campo <code>card_on_dark_web</code> es una feature crítica para el modelo de fraude.</p>
+    <ul>
+      <li>has_chip correlaciona con seguridad de la transacción</li>
+      <li>card_type (prepaid) asociado a mayor riesgo</li>
+      <li>credit_limit como umbral de detección de montos anómalos</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent2)">💸 Transacción</h3>
+    <p>Evento central del sistema. Cada transacción es evaluada por el modelo para asignarle un score de fraude.</p>
+    <ul>
+      <li>Errores en la transacción (PIN incorrecto, etc.) como señal</li>
+      <li>use_chip indica si se usó chip o banda magnética</li>
+      <li>merchant_city permite detectar transacciones geográficamente imposibles</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent4)">🏪 CodigoMCC</h3>
+    <p>Catálogo de categorías de comercios (Merchant Category Code). Permite agrupar transacciones por rubro y detectar patrones de fraude por sector.</p>
+    <ul>
+      <li>~90 categorías disponibles en el dataset</li>
+      <li>Categorías de alto riesgo: casinos, money transfer, prepaid</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent3)">🧠 PrediccionFraude</h3>
+    <p>Resultado del modelo ML sobre cada transacción. Almacena el score continuo y la clasificación binaria final.</p>
+    <ul>
+      <li>fraud_score en rango [0, 1] para umbrales ajustables</li>
+      <li>Trazabilidad: qué modelo y versión generó cada predicción</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent2)">🚨 AlertaFraude</h3>
+    <p>Notificación accionable generada cuando una predicción supera un umbral. Tiene ciclo de vida propio (pendiente → revisada → resuelta).</p>
+    <ul>
+      <li>severity: LOW / MEDIUM / HIGH / CRITICAL</li>
+      <li>status: OPEN / REVIEWING / CONFIRMED / DISMISSED</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:var(--accent3)">⚙️ ModeloML</h3>
+    <p>Registro de versiones del modelo de detección. Permite comparar performance entre versiones y hacer rollback.</p>
+    <ul>
+      <li>Almacena métricas: precision, recall, AUC-ROC</li>
+      <li>is_active indica el modelo en producción</li>
+    </ul>
+  </div>
+
+  <div class="desc-card">
+    <h3 style="color:#94a3b8">📊 PerfilRiesgo</h3>
+    <p>Entidad derivada que agrega comportamiento histórico del usuario. Se recalcula periódicamente para reflejar cambios de patrón.</p>
+    <ul>
+      <li>Frecuencia y monto promedio de transacciones</li>
+      <li>Historial de fraudes confirmados</li>
+      <li>risk_score compuesto como feature del modelo</li>
+    </ul>
+  </div>
+
+</div>
+
+<footer>
+  <span>Sistema de Detección de Fraude Financiero · Modelo de Dominio UML · 2026</span>
+  <span>8 entidades · 7 relaciones · datos: transactions_data, cards_data, users_data, mcc_codes, train_fraud_labels</span>
+</footer>
+
+</body>
+</html>
