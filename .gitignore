@@ -9,3 +9,5 @@ __pycache__/
 
 # Streamlit cache
 .streamlit/
+
+fintrack.db
